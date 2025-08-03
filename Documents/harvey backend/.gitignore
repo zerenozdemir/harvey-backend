@@ -1,0 +1,18 @@
+# Ignore everything outside this folder
+*.pyc
+__pycache__/
+.env
+.vscode/
+.DS_Store
+*.log
+
+# Ignore system paths (common on Windows)
+AppData/
+node_modules/
+*.db
+*.sqlite
+
+# Ignore general cache & OS files
+*.bak
+*.tmp
+*.swp
