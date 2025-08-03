@@ -58,4 +58,5 @@ def handle_salesiq():
         return jsonify({"reply": "Sorry, something went wrong. Please try again later."}), 500
 
 if __name__ == "__main__":
-    app.run(port=5000)
+    app.run(app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+)
