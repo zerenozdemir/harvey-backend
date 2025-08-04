@@ -28,7 +28,18 @@ def handle_salesiq():
         event_type = data.get("event")
         visitor_id = data.get("visitor_id", "anonymous")
 
-        # Handle the 'trigger' event (initial greeting)
+        if not event_type:
+            print("⚠️ No event type provided")
+            return jsonify({
+                "replies": [
+                    {
+                        "type": "text",
+                        "text": "Hi! I'm Harvey. How can I help you today?"
+                    }
+                ]
+            }), 200
+
+        # Trigger handler
         if event_type == "trigger":
             print("⚡ Trigger event received")
             return jsonify({
@@ -40,7 +51,7 @@ def handle_salesiq():
                 ]
             }), 200
 
-        # Handle the 'message' event (when user types)
+        # Message handler
         elif event_type == "message":
             user_input = data.get("message", "").strip()
             print(f"💬 Visitor [{visitor_id}]: {user_input}")
@@ -55,23 +66,19 @@ def handle_salesiq():
                     ]
                 }), 200
 
-            # Step 1: Create a thread
             thread = openai.beta.threads.create()
 
-            # Step 2: Add user message
             openai.beta.threads.messages.create(
                 thread_id=thread.id,
                 role="user",
                 content=user_input
             )
 
-            # Step 3: Run assistant
             run = openai.beta.threads.runs.create(
                 thread_id=thread.id,
                 assistant_id=ASSISTANT_ID
             )
 
-            # Step 4: Wait for completion
             while run.status != "completed":
                 time.sleep(1)
                 run = openai.beta.threads.runs.retrieve(
@@ -79,7 +86,6 @@ def handle_salesiq():
                     run_id=run.id
                 )
 
-            # Step 5: Get assistant reply
             messages = openai.beta.threads.messages.list(thread_id=thread.id)
             assistant_reply = messages.data[0].content[0].text.value.strip()
 
@@ -95,12 +101,12 @@ def handle_salesiq():
             }), 200
 
         else:
-            print(f"⚠️ Unhandled event type: {event_type}")
+            print(f"⚠️ Unrecognized event type: {event_type}")
             return jsonify({
                 "replies": [
                     {
                         "type": "text",
-                        "text": "Unhandled event type."
+                        "text": "I'm here to help, but didn't quite understand your request."
                     }
                 ]
             }), 200
@@ -115,6 +121,7 @@ def handle_salesiq():
                 }
             ]
         }), 200
+
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
