@@ -23,14 +23,16 @@ def health_check():
 @app.route("/salesiq-webhook", methods=["POST"])
 def handle_salesiq():
     try:
-        data = request.get_json()
+        data = request.get_json(force=True)
+        print("🔍 Raw incoming JSON from SalesIQ:", data)
+
         user_input = data.get("message", "")
         visitor_id = data.get("visitor_id", "anonymous")
 
-        if not user_input.strip():
-            return jsonify({"action": {"say": "Please enter a valid message."}}), 400
+        if not isinstance(user_input, str) or not user_input.strip():
+            return jsonify({"action": {"say": "Sorry, I didn't catch that. Can you rephrase your question?"}}), 200
 
-        print(f"Message from {visitor_id}: {user_input}")
+        print(f"✅ Message received from {visitor_id}: {user_input}")
 
         # Step 1: Create a thread
         thread = openai.beta.threads.create()
@@ -42,13 +44,13 @@ def handle_salesiq():
             content=user_input
         )
 
-        # Step 3: Run the assistant
+        # Step 3: Run assistant
         run = openai.beta.threads.runs.create(
             thread_id=thread.id,
             assistant_id=ASSISTANT_ID
         )
 
-        # Step 4: Wait until run is complete
+        # Step 4: Poll until completed
         while run.status != "completed":
             time.sleep(1)
             run = openai.beta.threads.runs.retrieve(
@@ -56,7 +58,7 @@ def handle_salesiq():
                 run_id=run.id
             )
 
-        # Step 5: Get the assistant's reply
+        # Step 5: Extract response
         messages = openai.beta.threads.messages.list(thread_id=thread.id)
         assistant_reply = messages.data[0].content[0].text.value.strip()
 
@@ -65,6 +67,15 @@ def handle_salesiq():
                 "say": assistant_reply
             }
         })
+
+    except Exception as e:
+        print("❌ Exception caught in /salesiq-webhook:", e)
+        return jsonify({
+            "action": {
+                "say": "I'm having some trouble processing that. Please try again in a moment."
+            }
+        }), 500
+
 
     except Exception as e:
         print("❌ Error:", e)
