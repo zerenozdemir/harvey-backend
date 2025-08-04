@@ -23,7 +23,9 @@ def health_check():
 def handle_salesiq():
     try:
         data = request.get_json(force=True)
-        print("📥 Incoming Data:", data)
+        print("\n📥 FULL PAYLOAD:")
+        print(data)
+
 
         event_type = data.get("event")
         visitor_id = data.get("visitor_id", "anonymous")
