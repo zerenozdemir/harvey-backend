@@ -16,7 +16,7 @@ app = Flask(__name__)
 
 @app.route("/", methods=["GET"])
 def health_check():
-    return jsonify({"status": "Harvey is live and operational."})
+    return jsonify({"action": {"say": assistant_reply}})
 
 @app.route("/salesiq-webhook", methods=["POST"])
 def handle_salesiq():
