@@ -1,8 +1,8 @@
 from flask import Flask, request, jsonify
 import openai
 import os
-import time
 from dotenv import load_dotenv
+import time
 
 # Load environment variables
 load_dotenv()
@@ -10,26 +10,23 @@ openai.api_key = os.getenv("OPENAI_API_KEY")
 ASSISTANT_ID = os.getenv("HARVEY_ASSISTANT_ID")
 
 app = Flask(__name__)
-memory_cache = {}
 
 @app.route("/", methods=["GET", "HEAD"])
 def health_check():
     return jsonify({"status": "OK"}), 200
 
 @app.route("/salesiq-webhook", methods=["POST"])
-def handle_zobot():
+def handle_salesiq():
     try:
         payload = request.get_json(force=True)
         print("📥 Incoming Payload:", payload)
 
         handler = payload.get("handler")
         operation = payload.get("operation")
-        trigger_name = payload.get("trigger_name")
         message = payload.get("message", {})
         visitor_message = message.get("text", "").strip()
-        visitor_id = payload.get("visitor", {}).get("id", "anonymous")
 
-        # 1. Initial trigger when chat opens
+        # Case 1: Visitor opens chat (trigger)
         if handler == "trigger":
             return jsonify({
                 "action": "reply",
@@ -38,33 +35,13 @@ def handle_zobot():
                 }]
             }), 200
 
-        # 2. First user message → reply fast and set up nexttrigger
-        if operation in ["chat", "message"] and not trigger_name:
+        # Case 2: First or ongoing visitor message
+        if operation in ["chat", "message"]:
             if not visitor_message:
                 return jsonify({
                     "action": "reply",
                     "replies": [{
                         "text": "I'm sorry, I didn't catch that. Could you rephrase?"
-                    }]
-                }), 200
-
-            memory_cache[visitor_id] = visitor_message  # Save the input
-            return jsonify({
-                "action": "reply",
-                "replies": [{
-                    "text": "Got it! Give me a few seconds to think..."
-                }],
-                "nexttrigger": "continue_ai"
-            }), 200
-
-        # 3. Second phase: handle nexttrigger to reply with AI
-        if trigger_name == "continue_ai":
-            stored_question = memory_cache.get(visitor_id)
-            if not stored_question:
-                return jsonify({
-                    "action": "reply",
-                    "replies": [{
-                        "text": "Hmm, I couldn’t find your earlier message. Could you try again?"
                     }]
                 }), 200
 
@@ -75,16 +52,16 @@ def handle_zobot():
             openai.beta.threads.messages.create(
                 thread_id=thread.id,
                 role="user",
-                content=stored_question
+                content=visitor_message
             )
 
-            # Step 3: Run the assistant
+            # Step 3: Run assistant
             run = openai.beta.threads.runs.create(
                 thread_id=thread.id,
                 assistant_id=ASSISTANT_ID
             )
 
-            # Step 4: Wait until assistant finishes
+            # Step 4: Wait until run completes (no timeout fallback)
             while True:
                 run = openai.beta.threads.runs.retrieve(
                     thread_id=thread.id,
@@ -94,16 +71,13 @@ def handle_zobot():
                     break
                 time.sleep(1)
 
-            # Step 5: Extract assistant reply
-            assistant_reply = "Hmm, I’m not sure how to respond right now."
+            # Step 5: Get assistant's reply
+            assistant_reply = "Hmm, no response yet."
             messages = openai.beta.threads.messages.list(thread_id=thread.id)
             for msg in messages.data:
                 if msg.role == "assistant":
                     assistant_reply = msg.content[0].text.value.strip()
                     break
-
-            # Optional: clean up
-            memory_cache.pop(visitor_id, None)
 
             return jsonify({
                 "action": "reply",
@@ -112,11 +86,11 @@ def handle_zobot():
                 }]
             }), 200
 
-        # 4. Fallback for unrecognized cases
+        # Case 3: Unknown handler or operation
         return jsonify({
             "action": "reply",
             "replies": [{
-                "text": "Sorry, I didn’t understand that."
+                "text": "Sorry, I didn’t understand that request."
             }]
         }), 200
 
