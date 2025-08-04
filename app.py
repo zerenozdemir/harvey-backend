@@ -24,28 +24,27 @@ def handle_salesiq():
         data = request.get_json(force=True)
         print("📥 Incoming Data:", data)
 
-        event = data.get("event")
+        event_type = data.get("event")
+        visitor_id = data.get("visitor_id", "anonymous")
 
-        if event == "trigger":
-            # Greet the user or introduce the assistant
+        if event_type == "trigger":
+            print("⚡ Trigger event received")
             return jsonify({
                 "action": {
                     "say": "Hi there! I'm Harvey, your assistant. How can I help you today?"
                 }
             }), 200
 
-        elif event == "message":
-            user_input = data.get("message", "").strip()
-            visitor_id = data.get("visitor_id", "anonymous")
-
-            if not user_input:
-                print("❌ No message received.")
+        elif event_type == "message":
+            user_input = data.get("message", "")
+            if not isinstance(user_input, str) or not user_input.strip():
                 return jsonify({
                     "action": {
                         "say": "I'm sorry, I didn't catch that. Could you rephrase?"
                     }
                 }), 200
 
+            user_input = user_input.strip()
             print(f"💬 Visitor [{visitor_id}]: {user_input}")
 
             # Step 1: Create thread
@@ -64,7 +63,7 @@ def handle_salesiq():
                 assistant_id=ASSISTANT_ID
             )
 
-            # Step 4: Poll for completion
+            # Step 4: Wait for completion
             while run.status != "completed":
                 time.sleep(1)
                 run = openai.beta.threads.runs.retrieve(
@@ -72,7 +71,7 @@ def handle_salesiq():
                     run_id=run.id
                 )
 
-            # Step 5: Get assistant's reply
+            # Step 5: Fetch reply
             messages = openai.beta.threads.messages.list(thread_id=thread.id)
             assistant_reply = messages.data[0].content[0].text.value.strip()
 
@@ -85,15 +84,15 @@ def handle_salesiq():
             }), 200
 
         else:
-            print("⚠️ Unhandled event type:", event)
+            print(f"⚠️ Unhandled event: {event_type}")
             return jsonify({
                 "action": {
-                    "say": "Sorry, I didn't understand that event."
+                    "say": "Unhandled event type."
                 }
             }), 200
 
     except Exception as e:
-        print("❌ Exception:", e)
+        print("❌ Error:", e)
         return jsonify({
             "action": {
                 "say": "Sorry, something went wrong. Please try again."
