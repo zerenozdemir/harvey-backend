@@ -25,15 +25,18 @@ def health_check():
 def handle_salesiq():
     try:
         data = request.get_json()
-        user_input = data.get("message", "")
+        user_input = data.get("message", "").strip()
         visitor_id = data.get("visitor_id", "anonymous")
+
+        if not user_input:
+            return jsonify({"reply": "I didn't receive any message. Could you please rephrase or try again?"}), 400
 
         print(f"📩 Received message: {user_input} from visitor {visitor_id}")
 
         # Step 1: Create a thread
         thread = openai.beta.threads.create()
 
-        # Step 2: Add user message to thread
+        # Step 2: Add user message
         openai.beta.threads.messages.create(
             thread_id=thread.id,
             role="user",
@@ -51,13 +54,17 @@ def handle_salesiq():
             time.sleep(1)
             run = openai.beta.threads.runs.retrieve(thread_id=thread.id, run_id=run.id)
 
-        # Step 5: Get assistant reply
+        # Step 5: Get reply
         messages = openai.beta.threads.messages.list(thread_id=thread.id)
         assistant_reply = messages.data[0].content[0].text.value.strip()
 
-        print(f"🤖 Harvey's reply: {assistant_reply}")
-
         return jsonify({"reply": assistant_reply})
+
+    except Exception as e:
+        print("❌ Error:", e)
+        traceback.print_exc()
+        return jsonify({"reply": "Sorry, something went wrong. Please try again later."}), 500
+
 
     except Exception as e:
         print("❌ Error occurred while processing webhook:")
