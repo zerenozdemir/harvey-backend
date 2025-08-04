@@ -3,6 +3,7 @@ import openai
 import time
 import os
 from dotenv import load_dotenv
+
 load_dotenv()
 
 openai.api_key = os.getenv("OPENAI_API_KEY")
@@ -10,12 +11,6 @@ ASSISTANT_ID = os.getenv("HARVEY_ASSISTANT_ID")
 
 print("OPENAI Key loaded:", openai.api_key)
 print("Assistant ID loaded:", ASSISTANT_ID)
-
-# Load API key from environment variable (recommended for security)
-openai.api_key = os.getenv("OPENAI_API_KEY")
-
-# Replace with your real Assistant ID
-ASSISTANT_ID = os.getenv("HARVEY_ASSISTANT_ID")
 
 app = Flask(__name__)
 
@@ -58,5 +53,4 @@ def handle_salesiq():
         return jsonify({"reply": "Sorry, something went wrong. Please try again later."}), 500
 
 if __name__ == "__main__":
-    app.run(app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
-)
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
