@@ -24,36 +24,35 @@ def handle_salesiq():
         data = request.get_json(force=True)
         print("📥 Incoming Data:", data)
 
-        user_input = data.get("message", "").strip()
+        user_input = data.get("message", "")
         visitor_id = data.get("visitor_id", "anonymous")
 
-        if not user_input:
-            print("❌ Missing user input")
+        if not isinstance(user_input, str) or not user_input.strip():
+            print("❌ Invalid or missing 'message'")
             return jsonify({
                 "action": {
-                    "say": "I'm sorry, I didn't catch that. Could you rephrase?"
+                    "say": {
+                        "value": "I'm sorry, I didn't catch that. Could you rephrase?"
+                    }
                 }
             }), 200
 
+        user_input = user_input.strip()
         print(f"💬 Visitor [{visitor_id}]: {user_input}")
 
-        # Step 1: Create a new thread
         thread = openai.beta.threads.create()
 
-        # Step 2: Add user message
         openai.beta.threads.messages.create(
             thread_id=thread.id,
             role="user",
             content=user_input
         )
 
-        # Step 3: Run the assistant
         run = openai.beta.threads.runs.create(
             thread_id=thread.id,
             assistant_id=ASSISTANT_ID
         )
 
-        # Step 4: Wait for completion
         while run.status != "completed":
             time.sleep(1)
             run = openai.beta.threads.runs.retrieve(
@@ -61,23 +60,16 @@ def handle_salesiq():
                 run_id=run.id
             )
 
-        # Step 5: Retrieve assistant's response
         messages = openai.beta.threads.messages.list(thread_id=thread.id)
-
-        assistant_reply = None
-        for msg in reversed(messages.data):
-            if msg.role == "assistant":
-                assistant_reply = msg.content[0].text.value.strip()
-                break
-
-        if not assistant_reply:
-            assistant_reply = "Sorry, I couldn't come up with a response right now."
+        assistant_reply = messages.data[0].content[0].text.value.strip()
 
         print(f"🤖 Harvey says: {assistant_reply}")
 
         return jsonify({
             "action": {
-                "say": assistant_reply
+                "say": {
+                    "value": assistant_reply
+                }
             }
         }), 200
 
@@ -85,7 +77,9 @@ def handle_salesiq():
         print("❌ Error:", e)
         return jsonify({
             "action": {
-                "say": "Sorry, something went wrong. Please try again."
+                "say": {
+                    "value": "Sorry, something went wrong. Please try again."
+                }
             }
         }), 200
 
