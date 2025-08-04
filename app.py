@@ -14,6 +14,10 @@ print("Assistant ID loaded:", ASSISTANT_ID)
 
 app = Flask(__name__)
 
+@app.route("/", methods=["GET"])
+def health_check():
+    return jsonify({"status": "Harvey is live and operational."})
+
 @app.route("/salesiq-webhook", methods=["POST"])
 def handle_salesiq():
     data = request.get_json()
@@ -44,7 +48,15 @@ def handle_salesiq():
 
         # Step 5: Get the assistant's reply
         messages = openai.beta.threads.messages.list(thread_id=thread.id)
-        assistant_reply = messages.data[0].content[0].text.value.strip()
+
+        assistant_reply = None
+        for msg in messages.data:
+            if msg.role == "assistant" and msg.content:
+                assistant_reply = msg.content[0].text.value.strip()
+                break
+
+        if not assistant_reply:
+            assistant_reply = "I couldn't find a valid reply from the assistant."
 
         return jsonify({"reply": assistant_reply})
 
