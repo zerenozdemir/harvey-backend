@@ -23,8 +23,9 @@ def health_check():
 def handle_salesiq():
     try:
         data = request.get_json(force=True)
-        print("\n📥 FULL PAYLOAD:")
-        print(data)
+        print("\n📥 FULL PAYLOAD:", flush=True)
+        print(data, flush=True)
+
 
 
         event_type = data.get("event")
