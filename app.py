@@ -4,7 +4,7 @@ import os
 import time
 from dotenv import load_dotenv
 
-# Load env variables
+# Load environment variables
 load_dotenv()
 openai.api_key = os.getenv("OPENAI_API_KEY")
 ASSISTANT_ID = os.getenv("HARVEY_ASSISTANT_ID")
@@ -21,39 +21,26 @@ def handle_salesiq():
         payload = request.get_json(force=True)
         print("📥 Incoming Payload:", payload)
 
-        # Handle initial Zobot trigger
+        # Handle Zobot initial trigger (when visitor opens chat)
         if payload.get("handler") == "trigger":
             return jsonify({
                 "action": "reply",
                 "replies": [{
                     "text": "Hi! I'm Harvey. How can I help you?"
-                }],
-                "suggestions": [
-                    "What is a DynaDome?",
-                    "Tell me about pricing",
-                    "Can I use it year-round?",
-                    "How does it open?"
-                ]
+                }]
             }), 200
 
-        # Handle regular chat or message operation
-        operation = payload.get("operation")  # Expected: "chat" or "message"
+        # Handle visitor messages (chat or reply)
+        operation = payload.get("operation")  # "chat" or "message"
         message = payload.get("message", {})
         visitor_message = message.get("text", "").strip()
         response = {}
 
         if operation == "chat":
-            # First visitor message
             response["action"] = "reply"
             response["replies"] = [{
                 "text": "Hi again! What can I help you with today?"
             }]
-            response["suggestions"] = [
-                "What is a DynaDome?",
-                "Tell me about pricing",
-                "Can I use it year-round?",
-                "How does it open?"
-            ]
 
         elif operation == "message":
             if not visitor_message:
@@ -63,7 +50,7 @@ def handle_salesiq():
                 }]
                 return jsonify(response), 200
 
-            # Use OpenAI Assistant to reply
+            # OpenAI Assistant response
             thread = openai.beta.threads.create()
             openai.beta.threads.messages.create(
                 thread_id=thread.id,
@@ -97,7 +84,6 @@ def handle_salesiq():
             response["replies"] = [{"text": assistant_reply}]
 
         else:
-            # Unrecognized event
             response["action"] = "reply"
             response["replies"] = [{
                 "text": "Sorry, I didn’t understand that operation type."
