@@ -21,8 +21,10 @@ def health_check():
 @app.route("/salesiq-webhook", methods=["POST"])
 def handle_salesiq():
     try:
+        print("Raw request body:", request.data.decode("utf-8"))
+
         data = request.get_json(force=True)
-        print("Incoming payload:", data)
+        print("Parsed JSON payload:", data)
 
         user_input = data.get("message")
         visitor_id = data.get("visitor_id", "anonymous")
@@ -64,6 +66,11 @@ def handle_salesiq():
             assistant_reply = "I couldn't find a valid reply from the assistant."
 
         return jsonify({"reply": assistant_reply})
+
+    except Exception as e:
+        print("Error handling Zobot message:", e)
+        return jsonify({"reply": "Sorry, something went wrong. Please try again later."}), 500
+
 
     except Exception as e:
         print("Error handling Zobot message:", e)
