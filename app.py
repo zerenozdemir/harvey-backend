@@ -21,45 +21,35 @@ def health_check():
 @app.route("/salesiq-webhook", methods=["POST"])
 def handle_salesiq():
     try:
-        data = request.get_json(force=True)
-        print("📥 FULL PAYLOAD:")
-        print(data)
+        payload = request.get_json(force=True)
+        print("📥 FULL PAYLOAD:\n", payload)
 
-        handler_type = data.get("handler")
-        user_input = data.get("message", {}).get("text", "").strip()
-        visitor = data.get("visitor", {})
+        handler = payload.get("handler")
+        visitor = payload.get("visitor", {})
         visitor_id = visitor.get("email", "anonymous")
 
-        # Handle trigger event
-        if handler_type == "trigger":
+        # Handle trigger
+        if handler == "trigger":
+            print("⚡ Trigger Handler Activated")
             return jsonify({
                 "action": {
-                    "type": "reply",
-                    "replies": [
-                        {
-                            "type": "text",
-                            "text": "Hi! I'm Harvey. How can I help you today?"
-                        }
-                    ]
+                    "say": "Hi! I'm Harvey. How can I help you today?"
                 }
             }), 200
 
-        # Handle message event
-        if handler_type == "message":
+        # Handle message
+        elif handler == "message":
+            user_input = payload.get("message", {}).get("text", "").strip()
+
             if not user_input:
+                print("⚠️ Missing or empty message text")
                 return jsonify({
                     "action": {
-                        "type": "reply",
-                        "replies": [
-                            {
-                                "type": "text",
-                                "text": "I'm sorry, I didn't catch that. Could you rephrase?"
-                            }
-                        ]
+                        "say": "I'm sorry, I didn't catch that. Could you rephrase?"
                     }
                 }), 200
 
-            print(f"💬 Visitor [{visitor_id}]: {user_input}")
+            print(f"💬 [{visitor_id}] said: {user_input}")
 
             # Step 1: Create thread
             thread = openai.beta.threads.create()
@@ -85,49 +75,32 @@ def handle_salesiq():
                     run_id=run.id
                 )
 
-            # Step 5: Get assistant's reply
+            # Step 5: Get assistant reply
             messages = openai.beta.threads.messages.list(thread_id=thread.id)
-            assistant_reply = messages.data[0].content[0].text.value.strip()
+            reply = messages.data[0].content[0].text.value.strip()
 
-            print(f"🤖 Harvey says: {assistant_reply}")
+            print(f"🤖 Harvey: {reply}")
 
             return jsonify({
                 "action": {
-                    "type": "reply",
-                    "replies": [
-                        {
-                            "type": "text",
-                            "text": assistant_reply
-                        }
-                    ]
+                    "say": reply
                 }
             }), 200
 
-        # Fallback for unknown handler
-        print("⚠️ Unhandled event type")
-        return jsonify({
-            "action": {
-                "type": "reply",
-                "replies": [
-                    {
-                        "type": "text",
-                        "text": "Unhandled event type. Please try again."
-                    }
-                ]
-            }
-        }), 200
+        # Unhandled event type
+        else:
+            print(f"⚠️ Unhandled handler: {handler}")
+            return jsonify({
+                "action": {
+                    "say": "Sorry, I'm not sure how to respond to that event type."
+                }
+            }), 200
 
     except Exception as e:
-        print("❌ Exception occurred:", e)
+        print("❌ Exception:", e)
         return jsonify({
             "action": {
-                "type": "reply",
-                "replies": [
-                    {
-                        "type": "text",
-                        "text": "Sorry, something went wrong. Please try again."
-                    }
-                ]
+                "say": "Sorry, something went wrong. Please try again."
             }
         }), 200
 
