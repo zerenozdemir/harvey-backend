@@ -21,55 +21,52 @@ def health_check():
 @app.route("/salesiq-webhook", methods=["POST"])
 def handle_salesiq():
     try:
-        payload = request.get_json(force=True)
-        print("📥 Incoming Payload:", payload)
+        data = request.get_json(force=True)
+        print("📥 FULL PAYLOAD:\n", data)
 
-        handler = payload.get("handler")
-        visitor = payload.get("visitor", {})
-        visitor_id = visitor.get("id", "anonymous")
+        handler = data.get("handler")
 
-        # Handle Trigger (initial greeting)
+        # === TRIGGER HANDLER ===
         if handler == "trigger":
-            print("🟡 Trigger handler hit.")
             return jsonify({
                 "action": {
-                    "replies": [
-                        {"type": "text", "text": "Hi! I'm Harvey. How can I help you today?"}
-                    ]
+                    "say": "Hi! I'm Harvey. How can I help you today?",
+                    "next_field": "message"
                 }
             }), 200
 
-        # Handle Message (user input)
-        if handler == "message":
-            message_obj = payload.get("message", {})
-            user_input = message_obj.get("text", "").strip()
+        # === MESSAGE HANDLER ===
+        elif handler == "message":
+            user_input = data.get("message", {}).get("text", "").strip()
+            visitor_id = data.get("visitor", {}).get("email", "anonymous")
 
             if not user_input:
+                print("❌ No input from user.")
                 return jsonify({
                     "action": {
-                        "replies": [
-                            {"type": "text", "text": "I'm sorry, I didn't catch that. Could you rephrase?"}
-                        ]
+                        "say": "I'm sorry, I didn't catch that. Could you rephrase?"
                     }
                 }), 200
 
             print(f"💬 Visitor [{visitor_id}]: {user_input}")
 
-            # OpenAI: Create thread and run assistant
+            # Step 1: Create thread
             thread = openai.beta.threads.create()
 
+            # Step 2: Add message
             openai.beta.threads.messages.create(
                 thread_id=thread.id,
                 role="user",
                 content=user_input
             )
 
+            # Step 3: Run assistant
             run = openai.beta.threads.runs.create(
                 thread_id=thread.id,
                 assistant_id=ASSISTANT_ID
             )
 
-            # Wait for completion
+            # Step 4: Wait for run
             while run.status != "completed":
                 time.sleep(1)
                 run = openai.beta.threads.runs.retrieve(
@@ -77,36 +74,32 @@ def handle_salesiq():
                     run_id=run.id
                 )
 
+            # Step 5: Get assistant's reply
             messages = openai.beta.threads.messages.list(thread_id=thread.id)
             assistant_reply = messages.data[0].content[0].text.value.strip()
 
-            print(f"🤖 Harvey: {assistant_reply}")
+            print(f"🤖 Harvey says: {assistant_reply}")
 
             return jsonify({
                 "action": {
-                    "replies": [
-                        {"type": "text", "text": assistant_reply}
-                    ]
+                    "say": assistant_reply
                 }
             }), 200
 
-        # Catch all for unhandled handlers
-        print(f"⚠️ Unhandled handler type: {handler}")
-        return jsonify({
-            "action": {
-                "replies": [
-                    {"type": "text", "text": "Unhandled event. Please try again."}
-                ]
-            }
-        }), 200
+        # === Unknown Handler ===
+        else:
+            print("⚠️ Unhandled handler type:", handler)
+            return jsonify({
+                "action": {
+                    "say": "I'm not sure how to handle this type of message."
+                }
+            }), 200
 
     except Exception as e:
         print("❌ Exception:", e)
         return jsonify({
             "action": {
-                "replies": [
-                    {"type": "text", "text": "Sorry, something went wrong. Please try again."}
-                ]
+                "say": "Sorry, something went wrong on my end. Try again?"
             }
         }), 200
 
