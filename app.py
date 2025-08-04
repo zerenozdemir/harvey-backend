@@ -1,8 +1,8 @@
 from flask import Flask, request, jsonify
 import openai
 import os
-import time
 from dotenv import load_dotenv
+import time
 
 # Load environment variables
 load_dotenv()
@@ -21,8 +21,13 @@ def handle_salesiq():
         payload = request.get_json(force=True)
         print("📥 Incoming Payload:", payload)
 
-        # Handle Zobot initial trigger (when visitor opens chat)
-        if payload.get("handler") == "trigger":
+        handler = payload.get("handler")
+        operation = payload.get("operation")
+        message = payload.get("message", {})
+        visitor_message = message.get("text", "").strip()
+
+        # Case 1: Visitor opens chat (trigger)
+        if handler == "trigger":
             return jsonify({
                 "action": "reply",
                 "replies": [{
@@ -30,67 +35,64 @@ def handle_salesiq():
                 }]
             }), 200
 
-        # Handle visitor messages (chat or reply)
-        operation = payload.get("operation")  # "chat" or "message"
-        message = payload.get("message", {})
-        visitor_message = message.get("text", "").strip()
-        response = {}
-
-        if operation == "chat":
-            response["action"] = "reply"
-            response["replies"] = [{
-                "text": "Hi again! What can I help you with today?"
-            }]
-
-        elif operation == "message":
+        # Case 2: First or ongoing visitor message
+        if operation in ["chat", "message"]:
             if not visitor_message:
-                response["action"] = "reply"
-                response["replies"] = [{
-                    "text": "I'm sorry, I didn't catch that. Could you rephrase?"
-                }]
-                return jsonify(response), 200
+                return jsonify({
+                    "action": "reply",
+                    "replies": [{
+                        "text": "I'm sorry, I didn't catch that. Could you rephrase?"
+                    }]
+                }), 200
 
-            # OpenAI Assistant response
+            # Step 1: Create thread
             thread = openai.beta.threads.create()
+
+            # Step 2: Add user message
             openai.beta.threads.messages.create(
                 thread_id=thread.id,
                 role="user",
                 content=visitor_message
             )
+
+            # Step 3: Run assistant
             run = openai.beta.threads.runs.create(
                 thread_id=thread.id,
                 assistant_id=ASSISTANT_ID
             )
 
-            timeout = 10
-            waited = 0
-            while run.status != "completed" and waited < timeout:
-                time.sleep(1)
-                waited += 1
+            # Step 4: Wait until run completes (no timeout fallback)
+            while True:
                 run = openai.beta.threads.runs.retrieve(
                     thread_id=thread.id,
                     run_id=run.id
                 )
+                if run.status == "completed":
+                    break
+                time.sleep(1)
 
-            assistant_reply = "I'm still thinking. Could you try again?"
-            if run.status == "completed":
-                messages = openai.beta.threads.messages.list(thread_id=thread.id)
-                for msg in messages.data:
-                    if msg.role == "assistant":
-                        assistant_reply = msg.content[0].text.value.strip()
-                        break
+            # Step 5: Get assistant's reply
+            assistant_reply = "Hmm, no response yet."
+            messages = openai.beta.threads.messages.list(thread_id=thread.id)
+            for msg in messages.data:
+                if msg.role == "assistant":
+                    assistant_reply = msg.content[0].text.value.strip()
+                    break
 
-            response["action"] = "reply"
-            response["replies"] = [{"text": assistant_reply}]
+            return jsonify({
+                "action": "reply",
+                "replies": [{
+                    "text": assistant_reply
+                }]
+            }), 200
 
-        else:
-            response["action"] = "reply"
-            response["replies"] = [{
-                "text": "Sorry, I didn’t understand that operation type."
+        # Case 3: Unknown handler or operation
+        return jsonify({
+            "action": "reply",
+            "replies": [{
+                "text": "Sorry, I didn’t understand that request."
             }]
-
-        print("🚀 Responding with:", response)
-        return jsonify(response), 200
+        }), 200
 
     except Exception as e:
         print("❌ Error occurred:", e)
