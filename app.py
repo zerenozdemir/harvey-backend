@@ -16,39 +16,48 @@ app = Flask(__name__)
 
 @app.route("/", methods=["GET", "HEAD"])
 def health_check():
-    return jsonify({"status": "Harvey backend is live."}), 200
+    return jsonify({"status": "OK"}), 200
 
 @app.route("/salesiq-webhook", methods=["POST"])
 def handle_salesiq():
     try:
+        # Parse incoming request safely
         data = request.get_json(force=True)
+        print("📥 Incoming Data:", data)
 
-        user_input = data.get("message", "").strip()
+        user_input = data.get("message", "")
         visitor_id = data.get("visitor_id", "anonymous")
 
-        if not user_input:
-            print("❌ No message content received.")
-            return jsonify({"reply": "Sorry, I didn’t catch that. Could you try again?"}), 400
+        # Validate input
+        if not isinstance(user_input, str) or not user_input.strip():
+            print("❌ Invalid or missing 'message'")
+            return jsonify({
+                "action": {
+                    "say": "I'm sorry, I didn't catch that. Could you rephrase?"
+                }
+            }), 200  # Still 200 to keep Zoho happy
+
+        user_input = user_input.strip()
 
         print(f"💬 Visitor [{visitor_id}]: {user_input}")
 
-        # Create thread
+        # Step 1: Create thread
         thread = openai.beta.threads.create()
 
-        # Add user message
+        # Step 2: Add user message
         openai.beta.threads.messages.create(
             thread_id=thread.id,
             role="user",
             content=user_input
         )
 
-        # Run assistant
+        # Step 3: Run assistant
         run = openai.beta.threads.runs.create(
             thread_id=thread.id,
             assistant_id=ASSISTANT_ID
         )
 
-        # Poll for completion
+        # Step 4: Wait for run to complete
         while run.status != "completed":
             time.sleep(1)
             run = openai.beta.threads.runs.retrieve(
@@ -56,11 +65,11 @@ def handle_salesiq():
                 run_id=run.id
             )
 
-        # Retrieve assistant response
+        # Step 5: Get assistant's reply
         messages = openai.beta.threads.messages.list(thread_id=thread.id)
         assistant_reply = messages.data[0].content[0].text.value.strip()
 
-        print(f"🤖 Harvey: {assistant_reply}")
+        print(f"🤖 Harvey says: {assistant_reply}")
 
         return jsonify({
             "action": {
@@ -69,12 +78,12 @@ def handle_salesiq():
         }), 200
 
     except Exception as e:
-        print("❌ Exception:", e)
+        print("❌ Error:", e)
         return jsonify({
             "action": {
                 "say": "Sorry, something went wrong. Please try again."
             }
-        }), 500
+        }), 200  # Still return 200 for Zoho compatibility
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
