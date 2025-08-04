@@ -25,26 +25,40 @@ def handle_salesiq():
         print("📥 FULL PAYLOAD:")
         print(data)
 
-        handler_type = data.get("handler", "")
+        handler_type = data.get("handler")
+        user_input = data.get("message", {}).get("text", "").strip()
+        visitor = data.get("visitor", {})
+        visitor_id = visitor.get("email", "anonymous")
+
+        # Handle trigger event
         if handler_type == "trigger":
             return jsonify({
                 "action": {
-                    "say": "Hi! I'm Harvey. How can I help you today?"
+                    "type": "reply",
+                    "replies": [
+                        {
+                            "type": "text",
+                            "text": "Hi! I'm Harvey. How can I help you today?"
+                        }
+                    ]
                 }
             }), 200
 
-        elif handler_type == "message":
-            user_input = data.get("message", {}).get("text", "")
-            visitor_id = data.get("visitor", {}).get("email", "anonymous")
-
-            if not isinstance(user_input, str) or not user_input.strip():
+        # Handle message event
+        if handler_type == "message":
+            if not user_input:
                 return jsonify({
                     "action": {
-                        "say": "I'm sorry, I didn't catch that. Could you rephrase?"
+                        "type": "reply",
+                        "replies": [
+                            {
+                                "type": "text",
+                                "text": "I'm sorry, I didn't catch that. Could you rephrase?"
+                            }
+                        ]
                     }
                 }), 200
 
-            user_input = user_input.strip()
             print(f"💬 Visitor [{visitor_id}]: {user_input}")
 
             # Step 1: Create thread
@@ -63,7 +77,7 @@ def handle_salesiq():
                 assistant_id=ASSISTANT_ID
             )
 
-            # Step 4: Wait for completion
+            # Step 4: Wait for run to complete
             while run.status != "completed":
                 time.sleep(1)
                 run = openai.beta.threads.runs.retrieve(
@@ -71,7 +85,7 @@ def handle_salesiq():
                     run_id=run.id
                 )
 
-            # Step 5: Get assistant reply
+            # Step 5: Get assistant's reply
             messages = openai.beta.threads.messages.list(thread_id=thread.id)
             assistant_reply = messages.data[0].content[0].text.value.strip()
 
@@ -79,23 +93,41 @@ def handle_salesiq():
 
             return jsonify({
                 "action": {
-                    "say": assistant_reply
+                    "type": "reply",
+                    "replies": [
+                        {
+                            "type": "text",
+                            "text": assistant_reply
+                        }
+                    ]
                 }
             }), 200
 
-        else:
-            print(f"⚠️ Unhandled handler type: {handler_type}")
-            return jsonify({
-                "action": {
-                    "say": "Unhandled event. Please try again later."
-                }
-            }), 200
-
-    except Exception as e:
-        print("❌ Error:", e)
+        # Fallback for unknown handler
+        print("⚠️ Unhandled event type")
         return jsonify({
             "action": {
-                "say": "Sorry, something went wrong. Please try again."
+                "type": "reply",
+                "replies": [
+                    {
+                        "type": "text",
+                        "text": "Unhandled event type. Please try again."
+                    }
+                ]
+            }
+        }), 200
+
+    except Exception as e:
+        print("❌ Exception occurred:", e)
+        return jsonify({
+            "action": {
+                "type": "reply",
+                "replies": [
+                    {
+                        "type": "text",
+                        "text": "Sorry, something went wrong. Please try again."
+                    }
+                ]
             }
         }), 200
 
