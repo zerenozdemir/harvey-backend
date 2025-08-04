@@ -18,32 +18,28 @@ app = Flask(__name__)
 def health_check():
     return jsonify({"status": "OK"}), 200
 
-
 @app.route("/salesiq-webhook", methods=["POST"])
 def handle_salesiq():
     try:
-        payload = request.get_json(force=True)
-        print("📥 Full Payload:", payload)
+        data = request.get_json(force=True)
+        print("📥 Incoming Data:", data)
 
-        event_type = payload.get("event")
-        print(f"📌 Event Type Received: {event_type}")
+        event = data.get("event")
 
-        visitor_id = payload.get("visitor", {}).get("id", "unknown")
-
-        # Handle supported events
-        if event_type == "trigger":
-            print("🚀 Trigger event received.")
+        if event == "trigger":
+            # Greet the user or introduce the assistant
             return jsonify({
                 "action": {
-                    "say": "Hi there! How can I help you today?"
+                    "say": "Hi there! I'm Harvey, your assistant. How can I help you today?"
                 }
             }), 200
 
-        elif event_type == "message":
-            user_input = payload.get("message", "").strip()
+        elif event == "message":
+            user_input = data.get("message", "").strip()
+            visitor_id = data.get("visitor_id", "anonymous")
 
             if not user_input:
-                print("⚠️ Empty message received.")
+                print("❌ No message received.")
                 return jsonify({
                     "action": {
                         "say": "I'm sorry, I didn't catch that. Could you rephrase?"
@@ -68,7 +64,7 @@ def handle_salesiq():
                 assistant_id=ASSISTANT_ID
             )
 
-            # Step 4: Wait for completion
+            # Step 4: Poll for completion
             while run.status != "completed":
                 time.sleep(1)
                 run = openai.beta.threads.runs.retrieve(
@@ -89,21 +85,20 @@ def handle_salesiq():
             }), 200
 
         else:
-            print(f"⚠️ Unhandled event type: {event_type}")
+            print("⚠️ Unhandled event type:", event)
             return jsonify({
                 "action": {
-                    "say": f"Unhandled event: {event_type}"
+                    "say": "Sorry, I didn't understand that event."
                 }
             }), 200
 
     except Exception as e:
-        print("❌ Exception occurred:", e)
+        print("❌ Exception:", e)
         return jsonify({
             "action": {
                 "say": "Sorry, something went wrong. Please try again."
             }
         }), 200
-
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
