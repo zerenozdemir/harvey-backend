@@ -21,66 +21,76 @@ def health_check():
 @app.route("/salesiq-webhook", methods=["POST"])
 def handle_salesiq():
     try:
-        data = request.get_json(force=True)
-        print("📥 Incoming Data:", data)
+        payload = request.get_json(force=True)
+        print("📥 Incoming:", payload)
 
-        user_input = data.get("message", "")
-        visitor_id = data.get("visitor_id", "anonymous")
+        # Determine which handler is being triggered
+        event_type = payload.get("event")
 
-        if not isinstance(user_input, str) or not user_input.strip():
-            print("❌ Invalid or missing 'message'")
+        if event_type == "trigger":
+            # Send a welcome message when chat starts
             return jsonify({
-                "action": {
-                    "say": {
-                        "value": "I'm sorry, I didn't catch that. Could you rephrase?"
-                    }
-                }
+                "replies": [
+                    {"type": "text", "text": "Hi there! I'm Harvey. Ask me anything about DynaDome structures."}
+                ]
             }), 200
 
-        user_input = user_input.strip()
-        print(f"💬 Visitor [{visitor_id}]: {user_input}")
+        elif event_type == "message":
+            user_input = payload.get("message", {}).get("text", "").strip()
+            visitor_id = payload.get("visitor", {}).get("id", "anonymous")
 
-        thread = openai.beta.threads.create()
+            if not user_input:
+                return jsonify({
+                    "replies": [
+                        {"type": "text", "text": "I'm sorry, I didn't catch that. Could you rephrase?"}
+                    ]
+                }), 200
 
-        openai.beta.threads.messages.create(
-            thread_id=thread.id,
-            role="user",
-            content=user_input
-        )
+            print(f"💬 {visitor_id}: {user_input}")
 
-        run = openai.beta.threads.runs.create(
-            thread_id=thread.id,
-            assistant_id=ASSISTANT_ID
-        )
+            # Thread and Assistant interaction
+            thread = openai.beta.threads.create()
 
-        while run.status != "completed":
-            time.sleep(1)
-            run = openai.beta.threads.runs.retrieve(
+            openai.beta.threads.messages.create(
                 thread_id=thread.id,
-                run_id=run.id
+                role="user",
+                content=user_input
             )
 
-        messages = openai.beta.threads.messages.list(thread_id=thread.id)
-        assistant_reply = messages.data[0].content[0].text.value.strip()
+            run = openai.beta.threads.runs.create(
+                thread_id=thread.id,
+                assistant_id=ASSISTANT_ID
+            )
 
-        print(f"🤖 Harvey says: {assistant_reply}")
+            # Wait for the assistant to finish
+            while run.status != "completed":
+                time.sleep(1)
+                run = openai.beta.threads.runs.retrieve(
+                    thread_id=thread.id,
+                    run_id=run.id
+                )
 
-        return jsonify({
-            "action": {
-                "say": {
-                    "value": assistant_reply
-                }
-            }
-        }), 200
+            messages = openai.beta.threads.messages.list(thread_id=thread.id)
+            assistant_reply = messages.data[0].content[0].text.value.strip()
+
+            print(f"🤖 Harvey: {assistant_reply}")
+
+            return jsonify({
+                "replies": [
+                    {"type": "text", "text": assistant_reply}
+                ]
+            }), 200
+
+        else:
+            print("⚠️ Unrecognized event type.")
+            return jsonify({"replies": [{"type": "text", "text": "Unhandled event."}]}), 200
 
     except Exception as e:
-        print("❌ Error:", e)
+        print("❌ Exception:", e)
         return jsonify({
-            "action": {
-                "say": {
-                    "value": "Sorry, something went wrong. Please try again."
-                }
-            }
+            "replies": [
+                {"type": "text", "text": "Sorry, something went wrong. Please try again."}
+            ]
         }), 200
 
 if __name__ == "__main__":
