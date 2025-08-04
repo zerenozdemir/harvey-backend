@@ -21,51 +21,29 @@ def health_check():
 @app.route("/salesiq-webhook", methods=["POST"])
 def handle_salesiq():
     try:
-        print("Raw request body:", request.data.decode("utf-8"))
+        print("=== Zobot Webhook Triggered ===")
 
-        data = request.get_json(force=True)
-        print("Parsed JSON payload:", data)
+        # Raw body and headers
+        raw = request.data.decode("utf-8")
+        headers = dict(request.headers)
 
-        user_input = data.get("message")
-        visitor_id = data.get("visitor_id", "anonymous")
+        print("Headers:", headers)
+        print("Raw body:", raw)
 
-        if not user_input:
-            raise ValueError("Missing 'message' in request body.")
+        # Try parsing JSON
+        try:
+            data = request.get_json(force=True)
+            print("Parsed JSON:", data)
+        except Exception as json_err:
+            print("❌ JSON parse error:", json_err)
+            data = {}
 
-        # Step 1: Create a thread
-        thread = openai.beta.threads.create()
+        return jsonify({"status": "received", "echo": data}), 200
 
-        # Step 2: Add message from visitor
-        openai.beta.threads.messages.create(
-            thread_id=thread.id,
-            role="user",
-            content=user_input
-        )
+    except Exception as e:
+        print("❌ Fatal error:", e)
+        return jsonify({"error": "unhandled exception"}), 500
 
-        # Step 3: Run the assistant
-        run = openai.beta.threads.runs.create(
-            thread_id=thread.id,
-            assistant_id=ASSISTANT_ID
-        )
-
-        # Step 4: Wait until run is complete
-        while run.status != "completed":
-            time.sleep(1)
-            run = openai.beta.threads.runs.retrieve(thread_id=thread.id, run_id=run.id)
-
-        # Step 5: Get the assistant's reply
-        messages = openai.beta.threads.messages.list(thread_id=thread.id)
-
-        assistant_reply = None
-        for msg in messages.data:
-            if msg.role == "assistant" and msg.content:
-                assistant_reply = msg.content[0].text.value.strip()
-                break
-
-        if not assistant_reply:
-            assistant_reply = "I couldn't find a valid reply from the assistant."
-
-        return jsonify({"reply": assistant_reply})
 
     except Exception as e:
         print("Error handling Zobot message:", e)
