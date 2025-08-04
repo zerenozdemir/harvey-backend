@@ -20,11 +20,16 @@ def health_check():
 
 @app.route("/salesiq-webhook", methods=["POST"])
 def handle_salesiq():
-    data = request.get_json()
-    user_input = data.get("message", "")
-    visitor_id = data.get("visitor_id", "anonymous")
-
     try:
+        data = request.get_json(force=True)
+        print("Incoming payload:", data)
+
+        user_input = data.get("message")
+        visitor_id = data.get("visitor_id", "anonymous")
+
+        if not user_input:
+            raise ValueError("Missing 'message' in request body.")
+
         # Step 1: Create a thread
         thread = openai.beta.threads.create()
 
@@ -61,7 +66,7 @@ def handle_salesiq():
         return jsonify({"reply": assistant_reply})
 
     except Exception as e:
-        print("Error:", e)
+        print("Error handling Zobot message:", e)
         return jsonify({"reply": "Sorry, something went wrong. Please try again later."}), 500
 
 if __name__ == "__main__":
