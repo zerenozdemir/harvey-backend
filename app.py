@@ -21,27 +21,23 @@ def health_check():
 @app.route("/salesiq-webhook", methods=["POST"])
 def handle_salesiq():
     try:
-        # Parse incoming request safely
         data = request.get_json(force=True)
         print("📥 Incoming Data:", data)
 
-        user_input = data.get("message", "")
+        user_input = data.get("message", "").strip()
         visitor_id = data.get("visitor_id", "anonymous")
 
-        # Validate input
-        if not isinstance(user_input, str) or not user_input.strip():
-            print("❌ Invalid or missing 'message'")
+        if not user_input:
+            print("❌ Missing user input")
             return jsonify({
                 "action": {
                     "say": "I'm sorry, I didn't catch that. Could you rephrase?"
                 }
-            }), 200  # Still 200 to keep Zoho happy
-
-        user_input = user_input.strip()
+            }), 200
 
         print(f"💬 Visitor [{visitor_id}]: {user_input}")
 
-        # Step 1: Create thread
+        # Step 1: Create a new thread
         thread = openai.beta.threads.create()
 
         # Step 2: Add user message
@@ -51,13 +47,13 @@ def handle_salesiq():
             content=user_input
         )
 
-        # Step 3: Run assistant
+        # Step 3: Run the assistant
         run = openai.beta.threads.runs.create(
             thread_id=thread.id,
             assistant_id=ASSISTANT_ID
         )
 
-        # Step 4: Wait for run to complete
+        # Step 4: Wait for completion
         while run.status != "completed":
             time.sleep(1)
             run = openai.beta.threads.runs.retrieve(
@@ -65,9 +61,17 @@ def handle_salesiq():
                 run_id=run.id
             )
 
-        # Step 5: Get assistant's reply
+        # Step 5: Retrieve assistant's response
         messages = openai.beta.threads.messages.list(thread_id=thread.id)
-        assistant_reply = messages.data[0].content[0].text.value.strip()
+
+        assistant_reply = None
+        for msg in reversed(messages.data):
+            if msg.role == "assistant":
+                assistant_reply = msg.content[0].text.value.strip()
+                break
+
+        if not assistant_reply:
+            assistant_reply = "Sorry, I couldn't come up with a response right now."
 
         print(f"🤖 Harvey says: {assistant_reply}")
 
@@ -83,7 +87,7 @@ def handle_salesiq():
             "action": {
                 "say": "Sorry, something went wrong. Please try again."
             }
-        }), 200  # Still return 200 for Zoho compatibility
+        }), 200
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
