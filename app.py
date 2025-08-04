@@ -21,17 +21,32 @@ def handle_salesiq():
         payload = request.get_json(force=True)
         print("📥 Incoming Payload:", payload)
 
-        operation = payload.get("operation")  # "chat" or "message"
+        # Handle initial Zobot trigger
+        if payload.get("handler") == "trigger":
+            return jsonify({
+                "action": "reply",
+                "replies": [{
+                    "text": "Hi! I'm Harvey. How can I help you?"
+                }],
+                "suggestions": [
+                    "What is a DynaDome?",
+                    "Tell me about pricing",
+                    "Can I use it year-round?",
+                    "How does it open?"
+                ]
+            }), 200
+
+        # Handle regular chat or message operation
+        operation = payload.get("operation")  # Expected: "chat" or "message"
         message = payload.get("message", {})
         visitor_message = message.get("text", "").strip()
-
         response = {}
 
         if operation == "chat":
-            # Initial interaction
+            # First visitor message
             response["action"] = "reply"
             response["replies"] = [{
-                "text": "Hi! I'm Harvey. What can I help you with today?"
+                "text": "Hi again! What can I help you with today?"
             }]
             response["suggestions"] = [
                 "What is a DynaDome?",
@@ -48,7 +63,7 @@ def handle_salesiq():
                 }]
                 return jsonify(response), 200
 
-            # OpenAI Assistant interaction
+            # Use OpenAI Assistant to reply
             thread = openai.beta.threads.create()
             openai.beta.threads.messages.create(
                 thread_id=thread.id,
@@ -82,6 +97,7 @@ def handle_salesiq():
             response["replies"] = [{"text": assistant_reply}]
 
         else:
+            # Unrecognized event
             response["action"] = "reply"
             response["replies"] = [{
                 "text": "Sorry, I didn’t understand that operation type."
