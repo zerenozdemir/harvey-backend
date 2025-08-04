@@ -4,8 +4,8 @@ import os
 import time
 from dotenv import load_dotenv
 
-# Load environment variables
 load_dotenv()
+
 openai.api_key = os.getenv("OPENAI_API_KEY")
 ASSISTANT_ID = os.getenv("HARVEY_ASSISTANT_ID")
 
@@ -22,50 +22,54 @@ def health_check():
 def handle_salesiq():
     try:
         payload = request.get_json(force=True)
-        print("📥 FULL PAYLOAD:")
-        print(payload)
+        print("📥 Incoming Payload:", payload)
 
-        handler_type = payload.get("handler", "")
-        message_data = payload.get("message", {})
-        user_input = message_data.get("text", "").strip()
+        handler = payload.get("handler")
+        visitor = payload.get("visitor", {})
+        visitor_id = visitor.get("id", "anonymous")
 
-        # Handle initial trigger event
-        if handler_type == "trigger":
-            print("🚀 Trigger event received")
+        # Handle Trigger (initial greeting)
+        if handler == "trigger":
+            print("🟡 Trigger handler hit.")
             return jsonify({
                 "action": {
-                    "replies": ["Hi! I'm Harvey, your assistant. How can I help you today?"]
+                    "replies": [
+                        {"type": "text", "text": "Hi! I'm Harvey. How can I help you today?"}
+                    ]
                 }
             }), 200
 
-        # Handle message event
-        elif handler_type == "message":
+        # Handle Message (user input)
+        if handler == "message":
+            message_obj = payload.get("message", {})
+            user_input = message_obj.get("text", "").strip()
+
             if not user_input:
                 return jsonify({
                     "action": {
-                        "replies": ["I didn’t catch that. Could you try rephrasing?"]
+                        "replies": [
+                            {"type": "text", "text": "I'm sorry, I didn't catch that. Could you rephrase?"}
+                        ]
                     }
                 }), 200
 
-            print(f"💬 Visitor message: {user_input}")
+            print(f"💬 Visitor [{visitor_id}]: {user_input}")
 
-            # Step 1: Create thread
+            # OpenAI: Create thread and run assistant
             thread = openai.beta.threads.create()
 
-            # Step 2: Add message to thread
             openai.beta.threads.messages.create(
                 thread_id=thread.id,
                 role="user",
                 content=user_input
             )
 
-            # Step 3: Run assistant
             run = openai.beta.threads.runs.create(
                 thread_id=thread.id,
                 assistant_id=ASSISTANT_ID
             )
 
-            # Step 4: Wait until completed
+            # Wait for completion
             while run.status != "completed":
                 time.sleep(1)
                 run = openai.beta.threads.runs.retrieve(
@@ -73,33 +77,38 @@ def handle_salesiq():
                     run_id=run.id
                 )
 
-            # Step 5: Get assistant reply
             messages = openai.beta.threads.messages.list(thread_id=thread.id)
             assistant_reply = messages.data[0].content[0].text.value.strip()
 
-            print(f"🤖 Harvey says: {assistant_reply}")
+            print(f"🤖 Harvey: {assistant_reply}")
 
             return jsonify({
                 "action": {
-                    "replies": [assistant_reply]
+                    "replies": [
+                        {"type": "text", "text": assistant_reply}
+                    ]
                 }
             }), 200
 
-        else:
-            print(f"⚠️ Unknown handler type: {handler_type}")
-            return jsonify({
-                "action": {
-                    "replies": ["Unhandled event type."]
-                }
-            }), 200
-
-    except Exception as e:
-        print("❌ Error:", e)
+        # Catch all for unhandled handlers
+        print(f"⚠️ Unhandled handler type: {handler}")
         return jsonify({
             "action": {
-                "replies": ["Sorry, something went wrong. Please try again later."]
+                "replies": [
+                    {"type": "text", "text": "Unhandled event. Please try again."}
+                ]
             }
-        }), 200  # Return 200 to avoid Zoho retries
+        }), 200
+
+    except Exception as e:
+        print("❌ Exception:", e)
+        return jsonify({
+            "action": {
+                "replies": [
+                    {"type": "text", "text": "Sorry, something went wrong. Please try again."}
+                ]
+            }
+        }), 200
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
