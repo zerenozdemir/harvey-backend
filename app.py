@@ -4,8 +4,8 @@ import os
 import time
 from dotenv import load_dotenv
 
+# Load environment variables
 load_dotenv()
-
 openai.api_key = os.getenv("OPENAI_API_KEY")
 ASSISTANT_ID = os.getenv("HARVEY_ASSISTANT_ID")
 
@@ -22,36 +22,34 @@ def health_check():
 def handle_salesiq():
     try:
         payload = request.get_json(force=True)
-        print("📥 FULL PAYLOAD:\n", payload)
+        print("📥 FULL PAYLOAD:")
+        print(payload)
 
-        handler = payload.get("handler")
-        visitor = payload.get("visitor", {})
-        visitor_id = visitor.get("email", "anonymous")
+        handler_type = payload.get("handler")
 
-        # Handle trigger
-        if handler == "trigger":
-            print("⚡ Trigger Handler Activated")
+        if handler_type == "trigger":
+            # Trigger handler - first interaction
             return jsonify({
                 "action": {
                     "say": "Hi! I'm Harvey. How can I help you today?"
                 }
             }), 200
 
-        # Handle message
-        elif handler == "message":
-            user_input = payload.get("message", {}).get("text", "").strip()
+        elif handler_type == "message":
+            # Message handler - visitor sends a message
+            message_data = payload.get("message", {})
+            user_input = message_data.get("text", "").strip()
 
             if not user_input:
-                print("⚠️ Missing or empty message text")
                 return jsonify({
                     "action": {
                         "say": "I'm sorry, I didn't catch that. Could you rephrase?"
                     }
                 }), 200
 
-            print(f"💬 [{visitor_id}] said: {user_input}")
+            print(f"💬 Visitor said: {user_input}")
 
-            # Step 1: Create thread
+            # Step 1: Create a new thread
             thread = openai.beta.threads.create()
 
             # Step 2: Add user message
@@ -61,13 +59,13 @@ def handle_salesiq():
                 content=user_input
             )
 
-            # Step 3: Run assistant
+            # Step 3: Run the assistant
             run = openai.beta.threads.runs.create(
                 thread_id=thread.id,
                 assistant_id=ASSISTANT_ID
             )
 
-            # Step 4: Wait for run to complete
+            # Step 4: Wait for completion
             while run.status != "completed":
                 time.sleep(1)
                 run = openai.beta.threads.runs.retrieve(
@@ -75,34 +73,33 @@ def handle_salesiq():
                     run_id=run.id
                 )
 
-            # Step 5: Get assistant reply
+            # Step 5: Get the reply
             messages = openai.beta.threads.messages.list(thread_id=thread.id)
-            reply = messages.data[0].content[0].text.value.strip()
+            assistant_reply = messages.data[0].content[0].text.value.strip()
 
-            print(f"🤖 Harvey: {reply}")
+            print(f"🤖 Harvey says: {assistant_reply}")
 
             return jsonify({
                 "action": {
-                    "say": reply
+                    "say": assistant_reply
                 }
             }), 200
 
-        # Unhandled event type
         else:
-            print(f"⚠️ Unhandled handler: {handler}")
+            print(f"⚠️ Unhandled handler type: {handler_type}")
             return jsonify({
                 "action": {
-                    "say": "Sorry, I'm not sure how to respond to that event type."
+                    "say": "Sorry, I didn’t understand that event type."
                 }
             }), 200
 
     except Exception as e:
-        print("❌ Exception:", e)
+        print("❌ Error occurred:", e)
         return jsonify({
             "action": {
                 "say": "Sorry, something went wrong. Please try again."
             }
-        }), 200
+        }), 200  # Always return 200 for Zoho
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
