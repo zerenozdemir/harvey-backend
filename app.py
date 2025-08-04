@@ -24,6 +24,8 @@ def health_check():
 def handle_salesiq():
     try:
         data = request.get_json()
+        print("🔍 Raw incoming JSON from SalesIQ:")
+        print(data)
         
         # Handle 'message' as string or dict
         raw_input = data.get("message", "")
