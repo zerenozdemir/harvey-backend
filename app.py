@@ -18,51 +18,57 @@ app = Flask(__name__)
 def health_check():
     return jsonify({"status": "OK"}), 200
 
+
 @app.route("/salesiq-webhook", methods=["POST"])
 def handle_salesiq():
     try:
         payload = request.get_json(force=True)
-        print("📥 Incoming:", payload)
+        print("📥 Full Payload:", payload)
 
-        # Determine which handler is being triggered
         event_type = payload.get("event")
+        print(f"📌 Event Type Received: {event_type}")
 
+        visitor_id = payload.get("visitor", {}).get("id", "unknown")
+
+        # Handle supported events
         if event_type == "trigger":
-            # Send a welcome message when chat starts
+            print("🚀 Trigger event received.")
             return jsonify({
-                "replies": [
-                    {"type": "text", "text": "Hi there! I'm Harvey. Ask me anything about DynaDome structures."}
-                ]
+                "action": {
+                    "say": "Hi there! How can I help you today?"
+                }
             }), 200
 
         elif event_type == "message":
-            user_input = payload.get("message", {}).get("text", "").strip()
-            visitor_id = payload.get("visitor", {}).get("id", "anonymous")
+            user_input = payload.get("message", "").strip()
 
             if not user_input:
+                print("⚠️ Empty message received.")
                 return jsonify({
-                    "replies": [
-                        {"type": "text", "text": "I'm sorry, I didn't catch that. Could you rephrase?"}
-                    ]
+                    "action": {
+                        "say": "I'm sorry, I didn't catch that. Could you rephrase?"
+                    }
                 }), 200
 
-            print(f"💬 {visitor_id}: {user_input}")
+            print(f"💬 Visitor [{visitor_id}]: {user_input}")
 
-            # Thread and Assistant interaction
+            # Step 1: Create thread
             thread = openai.beta.threads.create()
 
+            # Step 2: Add user message
             openai.beta.threads.messages.create(
                 thread_id=thread.id,
                 role="user",
                 content=user_input
             )
 
+            # Step 3: Run assistant
             run = openai.beta.threads.runs.create(
                 thread_id=thread.id,
                 assistant_id=ASSISTANT_ID
             )
 
-            # Wait for the assistant to finish
+            # Step 4: Wait for completion
             while run.status != "completed":
                 time.sleep(1)
                 run = openai.beta.threads.runs.retrieve(
@@ -70,28 +76,34 @@ def handle_salesiq():
                     run_id=run.id
                 )
 
+            # Step 5: Get assistant's reply
             messages = openai.beta.threads.messages.list(thread_id=thread.id)
             assistant_reply = messages.data[0].content[0].text.value.strip()
 
-            print(f"🤖 Harvey: {assistant_reply}")
+            print(f"🤖 Harvey says: {assistant_reply}")
 
             return jsonify({
-                "replies": [
-                    {"type": "text", "text": assistant_reply}
-                ]
+                "action": {
+                    "say": assistant_reply
+                }
             }), 200
 
         else:
-            print("⚠️ Unrecognized event type.")
-            return jsonify({"replies": [{"type": "text", "text": "Unhandled event."}]}), 200
+            print(f"⚠️ Unhandled event type: {event_type}")
+            return jsonify({
+                "action": {
+                    "say": f"Unhandled event: {event_type}"
+                }
+            }), 200
 
     except Exception as e:
-        print("❌ Exception:", e)
+        print("❌ Exception occurred:", e)
         return jsonify({
-            "replies": [
-                {"type": "text", "text": "Sorry, something went wrong. Please try again."}
-            ]
+            "action": {
+                "say": "Sorry, something went wrong. Please try again."
+            }
         }), 200
+
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
