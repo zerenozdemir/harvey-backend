@@ -25,47 +25,47 @@ def handle_salesiq():
         print("📥 FULL PAYLOAD:")
         print(payload)
 
-        handler_type = payload.get("handler")
+        handler_type = payload.get("handler", "")
+        message_data = payload.get("message", {})
+        user_input = message_data.get("text", "").strip()
 
+        # Handle initial trigger event
         if handler_type == "trigger":
-            # Trigger handler - first interaction
+            print("🚀 Trigger event received")
             return jsonify({
                 "action": {
-                    "say": "Hi! I'm Harvey. How can I help you today?"
+                    "replies": ["Hi! I'm Harvey, your assistant. How can I help you today?"]
                 }
             }), 200
 
+        # Handle message event
         elif handler_type == "message":
-            # Message handler - visitor sends a message
-            message_data = payload.get("message", {})
-            user_input = message_data.get("text", "").strip()
-
             if not user_input:
                 return jsonify({
                     "action": {
-                        "say": "I'm sorry, I didn't catch that. Could you rephrase?"
+                        "replies": ["I didn’t catch that. Could you try rephrasing?"]
                     }
                 }), 200
 
-            print(f"💬 Visitor said: {user_input}")
+            print(f"💬 Visitor message: {user_input}")
 
-            # Step 1: Create a new thread
+            # Step 1: Create thread
             thread = openai.beta.threads.create()
 
-            # Step 2: Add user message
+            # Step 2: Add message to thread
             openai.beta.threads.messages.create(
                 thread_id=thread.id,
                 role="user",
                 content=user_input
             )
 
-            # Step 3: Run the assistant
+            # Step 3: Run assistant
             run = openai.beta.threads.runs.create(
                 thread_id=thread.id,
                 assistant_id=ASSISTANT_ID
             )
 
-            # Step 4: Wait for completion
+            # Step 4: Wait until completed
             while run.status != "completed":
                 time.sleep(1)
                 run = openai.beta.threads.runs.retrieve(
@@ -73,7 +73,7 @@ def handle_salesiq():
                     run_id=run.id
                 )
 
-            # Step 5: Get the reply
+            # Step 5: Get assistant reply
             messages = openai.beta.threads.messages.list(thread_id=thread.id)
             assistant_reply = messages.data[0].content[0].text.value.strip()
 
@@ -81,25 +81,25 @@ def handle_salesiq():
 
             return jsonify({
                 "action": {
-                    "say": assistant_reply
+                    "replies": [assistant_reply]
                 }
             }), 200
 
         else:
-            print(f"⚠️ Unhandled handler type: {handler_type}")
+            print(f"⚠️ Unknown handler type: {handler_type}")
             return jsonify({
                 "action": {
-                    "say": "Sorry, I didn’t understand that event type."
+                    "replies": ["Unhandled event type."]
                 }
             }), 200
 
     except Exception as e:
-        print("❌ Error occurred:", e)
+        print("❌ Error:", e)
         return jsonify({
             "action": {
-                "say": "Sorry, something went wrong. Please try again."
+                "replies": ["Sorry, something went wrong. Please try again later."]
             }
-        }), 200  # Always return 200 for Zoho
+        }), 200  # Return 200 to avoid Zoho retries
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
