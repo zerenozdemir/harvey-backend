@@ -4,6 +4,7 @@ import os
 import time
 from dotenv import load_dotenv
 
+# Load environment variables
 load_dotenv()
 
 openai.api_key = os.getenv("OPENAI_API_KEY")
@@ -27,27 +28,34 @@ def handle_salesiq():
         event_type = data.get("event")
         visitor_id = data.get("visitor_id", "anonymous")
 
+        # Handle the 'trigger' event (initial greeting)
         if event_type == "trigger":
             print("⚡ Trigger event received")
             return jsonify({
-                "action": {
-                    "say": "Hi there! I'm Harvey, your assistant. How can I help you today?"
-                }
+                "replies": [
+                    {
+                        "type": "text",
+                        "text": "Hi there! I'm Harvey, your assistant. How can I help you today?"
+                    }
+                ]
             }), 200
 
+        # Handle the 'message' event (when user types)
         elif event_type == "message":
-            user_input = data.get("message", "")
-            if not isinstance(user_input, str) or not user_input.strip():
-                return jsonify({
-                    "action": {
-                        "say": "I'm sorry, I didn't catch that. Could you rephrase?"
-                    }
-                }), 200
-
-            user_input = user_input.strip()
+            user_input = data.get("message", "").strip()
             print(f"💬 Visitor [{visitor_id}]: {user_input}")
 
-            # Step 1: Create thread
+            if not user_input:
+                return jsonify({
+                    "replies": [
+                        {
+                            "type": "text",
+                            "text": "I'm sorry, I didn't catch that. Could you rephrase?"
+                        }
+                    ]
+                }), 200
+
+            # Step 1: Create a thread
             thread = openai.beta.threads.create()
 
             # Step 2: Add user message
@@ -71,32 +79,41 @@ def handle_salesiq():
                     run_id=run.id
                 )
 
-            # Step 5: Fetch reply
+            # Step 5: Get assistant reply
             messages = openai.beta.threads.messages.list(thread_id=thread.id)
             assistant_reply = messages.data[0].content[0].text.value.strip()
 
             print(f"🤖 Harvey says: {assistant_reply}")
 
             return jsonify({
-                "action": {
-                    "say": assistant_reply
-                }
+                "replies": [
+                    {
+                        "type": "text",
+                        "text": assistant_reply
+                    }
+                ]
             }), 200
 
         else:
-            print(f"⚠️ Unhandled event: {event_type}")
+            print(f"⚠️ Unhandled event type: {event_type}")
             return jsonify({
-                "action": {
-                    "say": "Unhandled event type."
-                }
+                "replies": [
+                    {
+                        "type": "text",
+                        "text": "Unhandled event type."
+                    }
+                ]
             }), 200
 
     except Exception as e:
         print("❌ Error:", e)
         return jsonify({
-            "action": {
-                "say": "Sorry, something went wrong. Please try again."
-            }
+            "replies": [
+                {
+                    "type": "text",
+                    "text": "Sorry, something went wrong. Please try again."
+                }
+            ]
         }), 200
 
 if __name__ == "__main__":
