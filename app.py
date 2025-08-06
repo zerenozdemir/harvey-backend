@@ -18,84 +18,90 @@ def health_check():
 @app.route("/salesiq-webhook", methods=["POST"])
 def handle_salesiq():
     try:
-        data = request.get_json(force=True)
-        print("📥 Full Payload:", data)
+        payload = request.get_json(force=True)
+        print("📥 Incoming Payload:", payload)
 
-        handler_type = data.get("handler")
-        user_input = data.get("message", {}).get("text", "").strip()
+        handler = payload.get("handler")
+        operation = payload.get("operation")
+        message = payload.get("message", {})
+        visitor_message = message.get("text", "").strip()
 
-        # Handle Trigger (when user lands on the site)
-        if handler_type == "trigger":
+        # Handle trigger (first message)
+        if handler == "trigger":
             return jsonify({
-                "action": {
-                    "say": "Hi! I'm DD. How can I help you today?"
-                }
+                "action": "reply",
+                "replies": [{
+                    "text": "Hi! I'm DD. How can I help you today?"
+                }]
             }), 200
 
-        # Handle Message (when user sends a message)
-        if handler_type == "message":
-            if not user_input:
+        # Handle user messages
+        if operation in ["chat", "message"]:
+            if not visitor_message:
                 return jsonify({
-                    "action": {
-                        "say": "I'm sorry, I didn't catch that. Could you rephrase?"
-                    }
+                    "action": "reply",
+                    "replies": [{
+                        "text": "I'm sorry, I didn't catch that. Could you rephrase?"
+                    }]
                 }), 200
 
-            print(f"💬 Visitor says: {user_input}")
-
-            # Assistant v2 call
+            # Step 1: Create thread
             thread = openai.beta.threads.create()
 
+            # Step 2: Add user message
             openai.beta.threads.messages.create(
                 thread_id=thread.id,
                 role="user",
-                content=user_input
+                content=visitor_message
             )
 
+            # Step 3: Run assistant
             run = openai.beta.threads.runs.create(
                 thread_id=thread.id,
                 assistant_id=ASSISTANT_ID
             )
 
-            # Wait for run to complete
+            # Step 4: Wait for completion
             while True:
-                time.sleep(1)
-                run = openai.beta.threads.runs.retrieve(thread_id=thread.id, run_id=run.id)
+                run = openai.beta.threads.runs.retrieve(
+                    thread_id=thread.id,
+                    run_id=run.id
+                )
                 if run.status == "completed":
                     break
-                elif run.status == "failed":
-                    return jsonify({
-                        "action": {
-                            "say": "Something went wrong. Please try again later."
-                        }
-                    }), 200
+                time.sleep(1)
 
-            # Get response message
+            # Step 5: Get reply
+            assistant_reply = "Hmm, no response yet."
             messages = openai.beta.threads.messages.list(thread_id=thread.id)
-            assistant_reply = messages.data[0].content[0].text.value.strip()
-
-            print(f"🤖 DD says: {assistant_reply}")
+            for msg in messages.data:
+                if msg.role == "assistant":
+                    assistant_reply = msg.content[0].text.value.strip()
+                    break
 
             return jsonify({
-                "action": {
-                    "say": assistant_reply
-                }
+                "action": "reply",
+                "replies": [{
+                    "text": assistant_reply
+                }]
             }), 200
 
-        # Unhandled handlers
+        # Unknown event
         return jsonify({
-            "action": {
-                "say": "Sorry, I didn’t understand that request."
-            }
+            "action": "reply",
+            "replies": [{
+                "text": "Sorry, I didn’t understand that request."
+            }]
         }), 200
 
     except Exception as e:
-        print("❌ Error:", e)
+        print("❌ Error occurred:", e)
         return jsonify({
-            "action": {
-                "say": "Sorry, something went wrong on my end. Please try again."
-            }
+            "action": "reply",
+            "replies": [{
+                "text": "Something went wrong. Please try again later."
+            }]
         }), 200
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
