@@ -21,6 +21,15 @@ def handle_salesiq():
         payload = request.get_json(force=True)
         print("📥 Payload:", payload)
 
+        # ✅ Step 1: Extract active conversation ID
+        conversation_id = payload.get("visitor", {}).get("active_conversation_id")
+        print("📌 Conversation ID:", conversation_id)
+
+        handler = payload.get("handler")
+        operation = payload.get("operation")
+        message = payload.get("message", {})
+        visitor_message = message.get("text", "").strip()
+
         handler = payload.get("handler")
         operation = payload.get("operation")
         message = payload.get("message", {})
