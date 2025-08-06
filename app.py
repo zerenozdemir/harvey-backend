@@ -1,13 +1,17 @@
 from flask import Flask, request, jsonify
-import openai
+from openai import OpenAI
 import os
-from dotenv import load_dotenv
 import time
+from dotenv import load_dotenv
 
-# Load environment variables
 load_dotenv()
-openai.api_key = os.getenv("OPENAI_API_KEY")
-ASSISTANT_ID = os.getenv("HARVEY_ASSISTANT_ID")
+
+client = OpenAI(
+    api_key=os.getenv("OPENAI_API_KEY"),
+    default_headers={"OpenAI-Beta": "assistants=v2"}
+)
+
+ASSISTANT_ID = os.getenv("HARVEY_ASSISTANT_ID")  # Still using this env var for now
 
 app = Flask(__name__)
 
@@ -18,90 +22,85 @@ def health_check():
 @app.route("/salesiq-webhook", methods=["POST"])
 def handle_salesiq():
     try:
-        payload = request.get_json(force=True)
-        print("📥 Incoming Payload:", payload)
+        data = request.get_json(force=True)
+        print("📥 Incoming Data:", data)
 
-        handler = payload.get("handler")
-        operation = payload.get("operation")
-        message = payload.get("message", {})
-        visitor_message = message.get("text", "").strip()
+        user_input = data.get("message", {}).get("text", "").strip()
+        visitor_id = data.get("visitor", {}).get("email", "anonymous")
 
-        # Case 1: Visitor opens chat (trigger)
-        if handler == "trigger":
+        if not user_input:
+            print("❌ Invalid or missing message text")
             return jsonify({
-                "action": "reply",
-                "replies": [{
-                    "text": "Hi! I'm Harvey. How can I help you?"
-                }]
+                "action": {
+                    "say": "I'm sorry, I didn't catch that. Could you rephrase?"
+                }
             }), 200
 
-        # Case 2: First or ongoing visitor message
-        if operation in ["chat", "message"]:
-            if not visitor_message:
-                return jsonify({
-                    "action": "reply",
-                    "replies": [{
-                        "text": "I'm sorry, I didn't catch that. Could you rephrase?"
-                    }]
-                }), 200
+        print(f"💬 Visitor [{visitor_id}]: {user_input}")
 
-            # Step 1: Create thread
-            thread = openai.beta.threads.create()
+        # Step 1: Create thread
+        thread = client.beta.threads.create()
 
-            # Step 2: Add user message
-            openai.beta.threads.messages.create(
+        # Step 2: Add user message
+        client.beta.threads.messages.create(
+            thread_id=thread.id,
+            role="user",
+            content=user_input
+        )
+
+        # Step 3: Run assistant
+        run = client.beta.threads.runs.create(
+            thread_id=thread.id,
+            assistant_id=ASSISTANT_ID
+        )
+
+        # Step 4: Poll until complete
+        while run.status not in ["completed", "failed", "cancelled"]:
+            time.sleep(1)
+            run = client.beta.threads.runs.retrieve(
                 thread_id=thread.id,
-                role="user",
-                content=visitor_message
+                run_id=run.id
             )
 
-            # Step 3: Run assistant
-            run = openai.beta.threads.runs.create(
-                thread_id=thread.id,
-                assistant_id=ASSISTANT_ID
-            )
-
-            # Step 4: Wait until run completes (no timeout fallback)
-            while True:
-                run = openai.beta.threads.runs.retrieve(
-                    thread_id=thread.id,
-                    run_id=run.id
-                )
-                if run.status == "completed":
-                    break
-                time.sleep(1)
-
-            # Step 5: Get assistant's reply
-            assistant_reply = "Hmm, no response yet."
-            messages = openai.beta.threads.messages.list(thread_id=thread.id)
-            for msg in messages.data:
-                if msg.role == "assistant":
-                    assistant_reply = msg.content[0].text.value.strip()
-                    break
-
+        if run.status != "completed":
+            print(f"❌ Run did not complete successfully: {run.status}")
             return jsonify({
-                "action": "reply",
-                "replies": [{
-                    "text": assistant_reply
-                }]
+                "action": {
+                    "say": "Sorry, I couldn't process that right now. Please try again."
+                }
             }), 200
 
-        # Case 3: Unknown handler or operation
+        # Step 5: Get assistant's response
+        messages = client.beta.threads.messages.list(thread_id=thread.id)
+        assistant_reply = None
+        for msg in messages.data:
+            if msg.role == "assistant":
+                assistant_reply = msg.content[0].text.value.strip()
+                break
+
+        if not assistant_reply:
+            print("❌ No assistant reply found")
+            return jsonify({
+                "action": {
+                    "say": "Sorry, I didn’t get that. Please try again."
+                }
+            }), 200
+
+        print(f"🤖 DD says: {assistant_reply}")
+
         return jsonify({
-            "action": "reply",
-            "replies": [{
-                "text": "Sorry, I didn’t understand that request."
-            }]
+            "action": {
+                "say": assistant_reply
+            }
         }), 200
 
     except Exception as e:
-        print("❌ Error occurred:", e)
+        print("❌ Exception:", e)
         return jsonify({
-            "action": "reply",
-            "replies": [{
-                "text": "Something went wrong. Please try again later."
-            }]
+            "action": {
+                "say": "Sorry, something went wrong. Please try again."
+            }
         }), 200
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
