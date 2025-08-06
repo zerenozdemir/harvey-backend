@@ -19,14 +19,14 @@ def health_check():
 def handle_salesiq():
     try:
         payload = request.get_json(force=True)
-        print("📥 Incoming Payload:", payload)
+        print("📥 Payload:", payload)
 
         handler = payload.get("handler")
         operation = payload.get("operation")
         message = payload.get("message", {})
         visitor_message = message.get("text", "").strip()
 
-        # Handle trigger (first message)
+        # Handle trigger
         if handler == "trigger":
             return jsonify({
                 "action": "reply",
@@ -35,13 +35,13 @@ def handle_salesiq():
                 }]
             }), 200
 
-        # Handle user messages
+        # Handle visitor message
         if operation in ["chat", "message"]:
             if not visitor_message:
                 return jsonify({
                     "action": "reply",
                     "replies": [{
-                        "text": "I'm sorry, I didn't catch that. Could you rephrase?"
+                        "text": "I'm sorry, I didn’t catch that. Could you rephrase?"
                     }]
                 }), 200
 
@@ -61,8 +61,8 @@ def handle_salesiq():
                 assistant_id=ASSISTANT_ID
             )
 
-            # Step 4: Wait for completion
-            while True:
+            # Step 4: Wait for completion (max 10s)
+            for _ in range(10):
                 run = openai.beta.threads.runs.retrieve(
                     thread_id=thread.id,
                     run_id=run.id
@@ -70,14 +70,24 @@ def handle_salesiq():
                 if run.status == "completed":
                     break
                 time.sleep(1)
+            else:
+                return jsonify({
+                    "action": "reply",
+                    "replies": [{
+                        "text": "Sorry, I'm having trouble right now. Please try again in a moment."
+                    }]
+                }), 200
 
             # Step 5: Get reply
-            assistant_reply = "Hmm, no response yet."
             messages = openai.beta.threads.messages.list(thread_id=thread.id)
+            assistant_reply = None
             for msg in messages.data:
                 if msg.role == "assistant":
                     assistant_reply = msg.content[0].text.value.strip()
                     break
+
+            if not assistant_reply:
+                assistant_reply = "I'm not sure how to answer that. Try rephrasing?"
 
             return jsonify({
                 "action": "reply",
@@ -86,7 +96,7 @@ def handle_salesiq():
                 }]
             }), 200
 
-        # Unknown event
+        # Unknown operation
         return jsonify({
             "action": "reply",
             "replies": [{
@@ -95,7 +105,7 @@ def handle_salesiq():
         }), 200
 
     except Exception as e:
-        print("❌ Error occurred:", e)
+        print("❌ Error:", e)
         return jsonify({
             "action": "reply",
             "replies": [{
