@@ -19,56 +19,50 @@ def health_check():
 def handle_salesiq():
     try:
         payload = request.get_json(force=True)
-        print("📥 Payload:", payload)
-
-        # ✅ Step 1: Extract active conversation ID
-        conversation_id = payload.get("visitor", {}).get("active_conversation_id")
-        print("📌 Conversation ID:", conversation_id)
-
         handler = payload.get("handler")
-        operation = payload.get("operation")
-        message = payload.get("message", {})
-        visitor_message = message.get("text", "").strip()
+        print("📥 Payload:", payload)
+        print("🔖 handler =", handler)
 
-        # Handle trigger
-        if handler == "trigger":
+        # 1) New conversation started → send initial greeting
+        if handler == "conversation.created":
             return jsonify({
                 "action": "reply",
                 "replies": [{
-                    "text": "Hi! I'm DD. How can I help you today?"
+                    "text": "Hi! I’m DD. How can I help you today?"
                 }]
             }), 200
 
-        # Handle visitor message
-        if operation in ["chat", "message"]:
+        # 2) Visitor sent a message → process with OpenAI
+        if handler == "message":
+            visitor_message = payload.get("message", {}).get("text", "").strip()
             if not visitor_message:
                 return jsonify({
                     "action": "reply",
                     "replies": [{
-                        "text": "I'm sorry, I didn’t catch that. Could you rephrase?"
+                        "text": "I’m sorry, I didn’t catch that. Could you rephrase?"
                     }]
                 }), 200
 
-            # Step 1: Create thread
+            # Step 1: Create a new thread
             thread = openai.beta.threads.create()
 
-            # Step 2: Add user message
+            # Step 2: Add the user’s message
             openai.beta.threads.messages.create(
                 thread_id=thread.id,
                 role="user",
                 content=visitor_message
             )
 
-            # Step 3: Run assistant
+            # Step 3: Request the assistant to run
             run = openai.beta.threads.runs.create(
                 thread_id=thread.id,
                 assistant_id=ASSISTANT_ID
             )
 
-            # ⏱ Step 3.5: Add a 5-second delay before polling
+            # ⏱ Optional: wait a few seconds before polling
             time.sleep(5)
 
-            # Step 4: Wait for completion (max 10s)
+            # Step 4: Poll until completion (up to ~10s)
             for _ in range(10):
                 run = openai.beta.threads.runs.retrieve(
                     thread_id=thread.id,
@@ -81,20 +75,21 @@ def handle_salesiq():
                 return jsonify({
                     "action": "reply",
                     "replies": [{
-                        "text": "Sorry, I'm having trouble right now. Please try again in a moment."
+                        "text": "Sorry, I’m having trouble right now. Please try again in a moment."
                     }]
                 }), 200
 
-            # Step 5: Get reply
+            # Step 5: Pull out the assistant’s reply
             messages = openai.beta.threads.messages.list(thread_id=thread.id)
             assistant_reply = None
             for msg in messages.data:
                 if msg.role == "assistant":
+                    # For Assistants v2: content is a list of choice objects
                     assistant_reply = msg.content[0].text.value.strip()
                     break
 
             if not assistant_reply:
-                assistant_reply = "I'm not sure how to answer that. Try rephrasing?"
+                assistant_reply = "I’m not sure how to answer that. Try rephrasing?"
 
             return jsonify({
                 "action": "reply",
@@ -103,7 +98,7 @@ def handle_salesiq():
                 }]
             }), 200
 
-        # Unknown operation
+        # 3) Anything else → fallback
         return jsonify({
             "action": "reply",
             "replies": [{
@@ -121,4 +116,5 @@ def handle_salesiq():
         }), 200
 
 if __name__ == "__main__":
+    # Run on port 10000 by default; override with environment variable PORT
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
