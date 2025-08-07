@@ -26,7 +26,7 @@ def handle_salesiq():
         if handler == "conversation.created":
             return jsonify({
                 "action": "reply",
-                "replies": [{ "text": "Hi! I’m DD. How can I help you today?" }]
+                "replies": [{ "text": "Hi! I'm DD. How can I help you today?" }]
             }), 200
 
         # 2) Visitor sent a message → process with OpenAI
@@ -40,25 +40,35 @@ def handle_salesiq():
 
             # OpenAI thread logic
             thread = openai.beta.threads.create()
-            openai.beta.threads.messages.create(thread_id=thread.id, role="user", content=visitor_message)
-            run = openai.beta.threads.runs.create(thread_id=thread.id, assistant_id=ASSISTANT_ID)
+            openai.beta.threads.messages.create(
+                thread_id=thread.id,
+                role="user",
+                content=visitor_message
+            )
+            run = openai.beta.threads.runs.create(
+                thread_id=thread.id,
+                assistant_id=ASSISTANT_ID
+            )
 
             time.sleep(5)
             for _ in range(10):
-                run = openai.beta.threads.runs.retrieve(thread_id=thread.id, run_id=run.id)
+                run = openai.beta.threads.runs.retrieve(
+                    thread_id=thread.id,
+                    run_id=run.id
+                )
                 if run.status == "completed":
                     break
                 time.sleep(1)
             else:
                 return jsonify({
                     "action": "reply",
-                    "replies": [{ "text": "Sorry, I’m having trouble right now. Please try again in a moment." }]
+                    "replies": [{ "text": "Sorry, I'm having trouble right now. Please try again in a moment." }]
                 }), 200
 
             messages = openai.beta.threads.messages.list(thread_id=thread.id)
             assistant_reply = next(
                 (m.content[0].text.value.strip() for m in messages.data if m.role == "assistant"),
-                "I’m not sure how to answer that. Try rephrasing?"
+                "I'm not sure how to answer that. Try rephrasing?"
             )
 
             return jsonify({
