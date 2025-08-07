@@ -19,26 +19,26 @@ def handle_salesiq():
     try:
         payload = request.get_json(force=True)
         handler = payload.get("handler")
-        print("📥 Payload:", payload)
-        print("🔖 handler =", handler)
+        operation = payload.get("operation")
+        visitor_message = payload.get("message", {}).get("text", "").strip()
 
-        # 1) New chat opened → send greeting
-        if handler == "conversation.created":
+        if handler == "trigger":
             return jsonify({
                 "action": "reply",
-                "replies": [{ "text": "Hi! I'm DD. How can I help you today?" }]
+                "replies": [{
+                    "text": "Hi! I’m DD. How can I help you today?"
+                }]
             }), 200
 
-        # 2) Visitor sent a message → process with OpenAI
-        if handler == "message":
-            visitor_message = payload.get("message", {}).get("text", "").strip()
+        if handler == "message" and operation in ["chat", "message"]:
             if not visitor_message:
                 return jsonify({
                     "action": "reply",
-                    "replies": [{ "text": "I didn’t catch that—could you rephrase?" }]
+                    "replies": [{
+                        "text": "I didn’t catch that—could you rephrase?"
+                    }]
                 }), 200
 
-            # OpenAI thread logic
             thread = openai.beta.threads.create()
             openai.beta.threads.messages.create(
                 thread_id=thread.id,
@@ -62,28 +62,35 @@ def handle_salesiq():
             else:
                 return jsonify({
                     "action": "reply",
-                    "replies": [{ "text": "Sorry, I'm having trouble right now. Please try again in a moment." }]
+                    "replies": [{
+                        "text": "Sorry, I’m having trouble right now. Please try again in a moment."
+                    }]
                 }), 200
 
             messages = openai.beta.threads.messages.list(thread_id=thread.id)
             assistant_reply = next(
                 (m.content[0].text.value.strip() for m in messages.data if m.role == "assistant"),
-                "I'm not sure how to answer that. Try rephrasing?"
+                "I’m not sure how to answer that. Try rephrasing?"
             )
 
             return jsonify({
                 "action": "reply",
-                "replies": [{ "text": assistant_reply }]
+                "replies": [{
+                    "text": assistant_reply
+                }]
             }), 200
 
-        # 3) All other handlers → do nothing
-        return jsonify({}), 200
-
-    except Exception as e:
-        print("❌ Error:", e)
         return jsonify({
             "action": "reply",
-            "replies": [{ "text": "Something went wrong. Please try again later." }]
+            "replies": []
+        }), 200
+
+    except Exception:
+        return jsonify({
+            "action": "reply",
+            "replies": [{
+                "text": "Something went wrong. Please try again later."
+            }]
         }), 200
 
 if __name__ == "__main__":
