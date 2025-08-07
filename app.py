@@ -30,11 +30,6 @@ def handle_salesiq():
         message = payload.get("message", {})
         visitor_message = message.get("text", "").strip()
 
-        handler = payload.get("handler")
-        operation = payload.get("operation")
-        message = payload.get("message", {})
-        visitor_message = message.get("text", "").strip()
-
         # Handle trigger
         if handler == "trigger":
             return jsonify({
@@ -69,6 +64,9 @@ def handle_salesiq():
                 thread_id=thread.id,
                 assistant_id=ASSISTANT_ID
             )
+
+            # ⏱ Step 3.5: Add a 5-second delay before polling
+            time.sleep(5)
 
             # Step 4: Wait for completion (max 10s)
             for _ in range(10):
